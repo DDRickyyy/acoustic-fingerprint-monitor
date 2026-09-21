@@ -1,0 +1,59 @@
+import gradio as gr
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+import audio_capture
+
+def get_fingerprint():
+    wav = audio_capture.record_once()
+    spec = np.abs(np.fft.rfft(wav))
+    norm = np.linalg.norm(spec)
+    if norm < 1e-8:
+        spec = np.zeros_like(spec)
+    else:
+        spec = spec / norm
+    return spec.reshape(1, -1)
+
+base_finger = None
+
+def set_baseline():
+    global base_finger
+    base_finger = get_fingerprint()
+    return "✅ Baseline fingerprint recorded successfully"
+
+def check_env():
+    global base_finger
+    if base_finger is None:
+        return None, "⚠️ Please record baseline first"
+    curr = get_fingerprint()
+    sim = cosine_similarity(base_finger, curr)[0][0]
+
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(8,4))
+    plt.plot(base_finger[0], label="Base fingerprint")
+    plt.plot(curr[0], label="Current fingerprint")
+    plt.title(f"Cosine Similarity = {sim:.3f}")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("tmp_plot.png")
+    plt.close()
+
+    if sim > 0.8:
+        status = "✅ Normal, ambient noise consistent"
+    else:
+        status = "🚨 Environmental anomaly detected!"
+    return "tmp_plot.png", status
+
+with gr.Blocks(title="Acoustic Fingerprint Monitor") as demo:
+    gr.Markdown("# Acoustic Fingerprint Monitor\n> Pure software acoustic environment fingerprint recognition, no hardware required.")
+    btn_base = gr.Button("1. Record Baseline Fingerprint", variant="primary")
+    out_base = gr.Textbox(label="Status")
+    gr.Markdown("## 2. Single Detection")
+    btn_detect = gr.Button("Single Detection")
+    plot_out = gr.Image(type="filepath")
+    status_out = gr.Textbox(label="Result")
+
+    btn_base.click(set_baseline, outputs=out_base)
+    btn_detect.click(check_env, outputs=[plot_out, status_out])
+
+if __name__ == "__main__":
+    demo.launch()
